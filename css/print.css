@@ -1,0 +1,26 @@
+/* ==========================================================================
+   print.css — solo se aplica al imprimir o exportar a PDF (Ctrl+P) con el
+   botón "Imprimir informe". Oculta controles interactivos y deja un reporte
+   limpio con el veredicto, las lecturas y el perfil del enlace.
+   ========================================================================== */
+@media print{
+  body{background:#fff !important}
+  header.masthead{background:#fff !important;color:#0F212C !important;box-shadow:none;border:1px solid #DFE6EA}
+  header.masthead::after{display:none}
+  .masthead h1{color:#0F212C !important}
+  .masthead .sub{color:#4A6070 !important}
+  .masthead-actions,.whoami{display:none !important}
+
+  .layout{grid-template-columns:1fr !important}
+  section.card:first-child{display:none !important} /* panel de parámetros de entrada */
+  .maptools{display:none !important}
+  #map{display:none !important}
+  .maphead{border-bottom:none}
+
+  .card,.ro,.verdict,.err,.note{box-shadow:none !important}
+  button{display:none !important}
+  .btnrow{display:none !important}
+
+  .wrap{max-width:100% !important;padding:0 !important}
+  a[href]:after{content:""}
+}

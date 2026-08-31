@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Elipsoide de Fresnel — Diagnóstico de radioenlace (ITU-R P.526)</title>
+<script>
+  /* Guardia de sesión: se ejecuta antes de pintar nada. Ver js/auth.js y
+     docs/documentacion-tecnica.html ("Límites del login") para el porqué
+     de este enfoque puramente del lado del cliente. */
+  if(sessionStorage.getItem("rf_auth") !== "1"){ location.replace("index.html"); }
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='78' font-size='78'%3E%F0%9F%93%A1%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/print.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brand">
+      <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tower"/></svg></div>
+      <div>
+        <h1>Elipsoide de Fresnel</h1>
+        <div class="sub">Diagnóstico de despeje de radioenlace · Rec. UIT-R P.526</div>
+      </div>
+    </div>
+    <div class="masthead-actions">
+      <span class="whoami"><svg class="ico"><use href="#i-user"/></svg> <span id="whoami">—</span></span>
+      <button type="button" class="icon-btn" id="btnPrint" title="Imprimir / exportar informe"><svg class="ico"><use href="#i-print"/></svg></button>
+      <button type="button" class="icon-btn" id="btnTheme" title="Cambiar tema"><svg class="ico" id="themeIcon"><use href="#i-moon"/></svg></button>
+      <button type="button" class="icon-btn" id="btnLogout" title="Cerrar sesión"><svg class="ico"><use href="#i-logout"/></svg></button>
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <!-- ENTRADAS -->
+    <section class="card">
+      <h2>Parámetros del enlace</h2>
+      <div class="pad">
+
+        <fieldset>
+          <legend><span class="dot a"></span>Sitio A</legend>
+          <div class="row">
+            <div class="field"><label for="latA">Latitud (°)</label><input type="number" id="latA" step="any" value="11.00410"></div>
+            <div class="field"><label for="lonA">Longitud (°)</label><input type="number" id="lonA" step="any" value="-74.80700"></div>
+          </div>
+          <div class="field"><label for="hA">Altura de torre (m)</label><input type="number" id="hA" step="any" min="0" value="30"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend><span class="dot b"></span>Sitio B</legend>
+          <div class="row">
+            <div class="field"><label for="latB">Latitud (°)</label><input type="number" id="latB" step="any" value="10.98780"></div>
+            <div class="field"><label for="lonB">Longitud (°)</label><input type="number" id="lonB" step="any" value="-74.95470"></div>
+          </div>
+          <div class="field"><label for="hB">Altura de torre (m)</label><input type="number" id="hB" step="any" min="0" value="25"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Radio</legend>
+          <div class="row">
+            <div class="field"><label for="freq">Frecuencia</label><input type="number" id="freq" step="any" min="0" value="5.8"></div>
+            <div class="field"><label for="funit">Unidad</label>
+              <select id="funit">
+                <option value="1">Hz</option>
+                <option value="1e3">kHz</option>
+                <option value="1e6">MHz</option>
+                <option value="1e9" selected>GHz</option>
+              </select>
+            </div>
+          </div>
+          <div class="hint" id="fhz">—</div>
+          <div class="field" style="margin-top:9px"><label for="kfac">Factor k (refracción)</label>
+            <select id="kfac">
+              <option value="1">1.00 · atmósfera nula</option>
+              <option value="1.3333" selected>1.33 · estándar (4/3)</option>
+              <option value="0.6667">0.67 · subrefracción</option>
+            </select>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Obstáculo (opcional)</legend>
+          <div class="check">
+            <input type="checkbox" id="obsOn">
+            <label for="obsOn">Incluir un obstáculo puntual en la trayectoria</label>
+          </div>
+          <div class="row">
+            <div class="field"><label for="obsD">Distancia desde A (km)</label><input type="number" id="obsD" step="any" min="0" value="8" disabled></div>
+            <div class="field"><label for="obsH">Altura (m)</label><input type="number" id="obsH" step="any" min="0" value="18" disabled></div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Terreno real (opcional)</legend>
+          <div class="check">
+            <input type="checkbox" id="terrainOn">
+            <label for="terrainOn">Usar elevación real del terreno (Open-Elevation)</label>
+          </div>
+          <div class="btnrow" style="margin-top:0">
+            <button type="button" id="btnTerrainUpdate">Actualizar terreno</button>
+          </div>
+          <div class="hint" id="terrainStatus" style="margin-top:8px">Requiere conexión a internet. Si no está disponible, se usa el modelo plano + curvatura terrestre.</div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Presupuesto de enlace (opcional)</legend>
+          <div class="check">
+            <input type="checkbox" id="lbOn">
+            <label for="lbOn">Calcular potencia recibida y margen de desvanecimiento</label>
+          </div>
+          <div class="row">
+            <div class="field"><label for="ptx">Potencia Tx (dBm)</label><input type="number" id="ptx" step="any" value="20" disabled></div>
+            <div class="field"><label for="gtx">Ganancia Tx (dBi)</label><input type="number" id="gtx" step="any" value="24" disabled></div>
+          </div>
+          <div class="row">
+            <div class="field"><label for="grx">Ganancia Rx (dBi)</label><input type="number" id="grx" step="any" value="24" disabled></div>
+            <div class="field"><label for="lloss">Pérdidas cable (dB)</label><input type="number" id="lloss" step="any" value="2" disabled></div>
+          </div>
+          <div class="field"><label for="rxsens">Sensibilidad Rx (dBm)</label><input type="number" id="rxsens" step="any" value="-75" disabled></div>
+        </fieldset>
+
+        <div class="btnrow">
+          <button type="button" class="primary" id="btnCalc">Calcular</button>
+          <button type="button" id="btnSwap">Invertir A ↔ B</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAPA + RESULTADOS -->
+    <section class="card">
+      <h2 class="maphead"><span>Trayectoria sobre el terreno</span>
+        <span class="maptools">
+          <button type="button" id="pickA" aria-pressed="false">Fijar A en el mapa</button>
+          <button type="button" id="pickB" aria-pressed="false">Fijar B en el mapa</button>
+        </span>
+      </h2>
+      <div id="map"></div>
+
+      <div class="verdict" id="verdict">
+        <div class="vicon" id="vicon" style="background:var(--ink-soft);color:#fff"><svg class="ico-lg"><use href="#i-info"/></svg></div>
+        <div class="txt">
+          <div class="state" id="vstate">—</div>
+          <div class="why" id="vwhy">Ingresa los parámetros y presiona Calcular.</div>
+          <div class="why2" id="vcheck"></div>
+        </div>
+      </div>
+
+      <div class="readouts">
+        <div class="ro"><div class="ro-ic"><svg class="ico"><use href="#i-distance"/></svg></div><div><div class="k">Distancia</div><div class="v" id="oDist">—</div><div class="u">km</div></div></div>
+        <div class="ro"><div class="ro-ic"><svg class="ico"><use href="#i-ellipse"/></svg></div><div><div class="k">Radio F₁</div><div class="v" id="oR1">—</div><div class="u">m · punto crítico</div></div></div>
+        <div class="ro"><div class="ro-ic"><svg class="ico"><use href="#i-ellipse-dash"/></svg></div><div><div class="k">60 % de F₁</div><div class="v" id="oR60">—</div><div class="u">m · umbral UIT-R</div></div></div>
+        <div class="ro"><div class="ro-ic"><svg class="ico"><use href="#i-clearance"/></svg></div><div><div class="k">Despeje mínimo</div><div class="v" id="oClr">—</div><div class="u">m sobre obstáculo</div></div></div>
+        <div class="ro"><div class="ro-ic"><svg class="ico"><use href="#i-ratio"/></svg></div><div><div class="k">Despeje / F₁</div><div class="v" id="oRatio">—</div><div class="u">fracción</div></div></div>
+        <div class="ro"><div class="ro-ic"><svg class="ico"><use href="#i-compass"/></svg></div><div><div class="k">Azimut A→B</div><div class="v" id="oAz">—</div><div class="u">grados</div></div></div>
+        <div class="ro"><div class="ro-ic"><svg class="ico"><use href="#i-signal"/></svg></div><div><div class="k">Pérdida espacio libre</div><div class="v" id="oFspl">—</div><div class="u">dB</div></div></div>
+        <div class="ro"><div class="ro-ic"><svg class="ico"><use href="#i-wave"/></svg></div><div><div class="k">Longitud de onda</div><div class="v" id="oLam">—</div><div class="u">m</div></div></div>
+        <div class="ro" id="tileHorizon"><div class="ro-ic"><svg class="ico"><use href="#i-horizon"/></svg></div><div><div class="k">Horizonte radioeléctrico</div><div class="v" id="oHorizon">—</div><div class="u">km · hA+hB</div></div></div>
+        <div class="ro" id="tileDiff"><div class="ro-ic"><svg class="ico"><use href="#i-diffraction"/></svg></div><div><div class="k">Pérdida por difracción</div><div class="v" id="oDiffLoss">—</div><div class="u">dB · P.526 §4.1, punto crítico</div></div></div>
+        <div class="ro"><div class="ro-ic"><svg class="ico"><use href="#i-budget"/></svg></div><div><div class="k">Potencia recibida</div><div class="v" id="oPrx">—</div><div class="u">dBm</div></div></div>
+        <div class="ro" id="tileMargin"><div class="ro-ic"><svg class="ico"><use href="#i-budget"/></svg></div><div><div class="k">Margen de desvanecimiento</div><div class="v" id="oMargin">—</div><div class="u">dB</div></div></div>
+      </div>
+      <div class="err" id="errbox" hidden><svg class="ico" style="margin-top:2px"><use href="#i-warn"/></svg><span id="errtxt"></span></div>
+    </section>
+  </div>
+
+  <!-- PERFIL -->
+  <section class="card profilecard">
+    <h2>Perfil del enlace y primer elipsoide</h2>
+    <div class="profilewrap"><svg class="profile" id="svg" viewBox="0 0 1000 380" role="img" aria-label="Perfil vertical del radioenlace con el primer elipsoide de Fresnel"></svg></div>
+    <div class="legend">
+      <span><i class="swatch" style="border-color:var(--amber);border-top-style:dashed"></i> Línea de vista</span>
+      <span><i class="swatch" style="border-color:var(--teal)"></i> Primer elipsoide F₁</span>
+      <span><i class="swatch" style="border-color:var(--teal);border-top-style:dotted"></i> Umbral 60 % F₁</span>
+      <span><i class="swatch" style="border-color:#7C8F9B"></i> Superficie efectiva (curvatura + terreno/obstáculo)</span>
+    </div>
+    <div class="note">
+      <span class="noteico"><svg class="ico" style="width:13px;height:13px"><use href="#i-info"/></svg></span>
+      <span><b>Criterio aplicado.</b> El radio del primer elipsoide se calcula como
+      <code>r₁ = 17.32·√(d₁·d₂ / (f·d))</code> con distancias en km, <code>f</code> en GHz y <code>r₁</code> en metros.
+      La curvatura terrestre se modela con <code>b = d₁·d₂ / (12.75·k)</code>. Siguiendo la Rec. UIT-R P.526, el enlace se
+      considera apto cuando al menos el <b>60 % de F₁</b> queda libre de obstáculos en todo el trayecto. El terreno
+      intermedio se asume plano al nivel de las bases de las torres, salvo que actives "Terreno real" (usa elevación
+      geográfica real vía Open-Elevation) o cargues un obstáculo puntual. Consulta
+      <code>docs/documentacion-tecnica.html</code> para el detalle completo de cada fórmula.</span>
+    </div>
+  </section>
+
+  <!-- ESCENARIOS GUARDADOS -->
+  <section class="card profilecard">
+    <h2>Escenarios guardados</h2>
+    <div class="pad">
+      <div class="scen-add">
+        <input type="text" id="scenName" placeholder="Nombre del escenario (p. ej. Torre-Norte 5.8GHz)">
+        <button type="button" class="primary" id="btnScenSave"><svg class="ico" style="margin-right:6px;display:inline-block;vertical-align:-3px"><use href="#i-save"/></svg>Guardar</button>
+      </div>
+      <div id="scenList"></div>
+    </div>
+  </section>
+
+  <div class="pagefoot">Gestión de Redes Telemáticas · Elipsoide de Fresnel (ITU-R P.526)</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/geo.js"></script>
+<script src="js/fresnel.js"></script>
+<script src="js/elevation.js"></script>
+<script src="js/scenarios.js"></script>
+<script src="js/map.js"></script>
+<script src="js/profile.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

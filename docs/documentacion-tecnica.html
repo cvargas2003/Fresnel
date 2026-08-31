@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentación técnica — Elipsoide de Fresnel</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='78' font-size='78'%3E%F0%9F%93%A1%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/base.css">
+<link rel="stylesheet" href="../css/docs.css">
+</head>
+<body>
+<div class="doc-wrap">
+
+  <header class="doc-header">
+    <div class="tag">Gestión de Redes Telemáticas · Documentación técnica</div>
+    <h1>Elipsoide de Fresnel — cómo funciona y cómo verificarlo</h1>
+    <p>Este documento explica la arquitectura del proyecto, cada fórmula usada en los cálculos (con un ejemplo numérico
+    reproducible a mano) y un checklist de cumplimiento contra el enunciado de la tarea.</p>
+  </header>
+
+  <nav class="toc">
+    <h2>Contenido</h2>
+    <ol>
+      <li><a href="#estructura">Estructura de archivos</a></li>
+      <li><a href="#login">El login y sus límites</a></li>
+      <li><a href="#arquitectura">Arquitectura de la app</a></li>
+      <li><a href="#formulas">Fórmulas y cálculos, paso a paso</a></li>
+      <li><a href="#rigor">Rigor frente a la P.526: qué es literal y qué es simplificación</a></li>
+      <li><a href="#ejemplo">Ejemplo numérico completo (verificable a mano)</a></li>
+      <li><a href="#nuevas">Funciones nuevas: qué hacen y por qué</a></li>
+      <li><a href="#cumplimiento">Cumplimiento del enunciado</a></li>
+      <li><a href="#limitaciones">Limitaciones conocidas</a></li>
+    </ol>
+  </nav>
+
+  <article>
+
+    <section id="estructura">
+      <h2><span class="num">1</span>Estructura de archivos</h2>
+      <p>El proyecto es HTML/CSS/JS estático — sin Node, sin bundler, sin backend — porque así se abre con solo hacer
+      doble clic o subir la carpeta a cualquier hosting estático, sin instalar nada. Esa restricción (nada de
+      <code>npm</code>, nada de módulos ES en <code>file://</code>, que Chrome bloquea por CORS) es la que determinó
+      varias decisiones de diseño explicadas más abajo.</p>
+      <div class="filetree">C:\Radio\
+├─ index.html              portada + formulario de acceso
+├─ app.html                herramienta de diagnóstico (protegida por login)
+├─ css\
+│  ├─ base.css             tokens de diseño, reset, componentes compartidos
+│  ├─ login.css            estilos propios de la portada
+│  ├─ app.css              estilos propios de la herramienta
+│  ├─ print.css            reglas @media print para el informe exportable
+│  └─ docs.css             estilos de este documento
+├─ js\
+│  ├─ icons.js             sprite SVG de iconos (un solo lugar, sin duplicar)
+│  ├─ auth.js              login/logout muy simple (ver sección 2)
+│  ├─ theme.js             tema claro/oscuro persistido
+│  ├─ geo.js               geodesia: distancia, azimut
+│  ├─ fresnel.js           física del enlace + compute() principal
+│  ├─ elevation.js         terreno real vía API Open-Elevation
+│  ├─ scenarios.js         guardar/cargar configuraciones (localStorage)
+│  ├─ map.js               mapa Leaflet (marcadores, arrastre, clic-para-fijar)
+│  ├─ profile.js           dibuja el perfil SVG del enlace
+│  └─ app.js               conecta todo lo anterior con el DOM
+└─ docs\
+   └─ documentacion-tecnica.html   este archivo</div>
+      <p class="soft">Cada archivo JS se envuelve en un IIFE que cuelga sus funciones de un único objeto global
+      <code>window.RF</code> (namespace), en vez de usar <code>import/export</code>. Es la forma "sin build tools" de
+      tener módulos separados sin ensuciar el espacio global con decenas de nombres sueltos, y funciona igual de bien
+      abriendo el archivo directamente o sirviéndolo desde un servidor.</p>
+    </section>
+
+    <section id="login">
+      <h2><span class="num">2</span>El login y sus límites</h2>
+      <p><b>Usuario:</b> <code>admin</code> &nbsp; <b>Contraseña:</b> <code>123</code></p>
+      <p>Al enviar el formulario, <code>js/auth.js</code> compara el texto ingresado contra esas dos constantes y, si
+      coinciden, guarda <code>sessionStorage["rf_auth"]="1"</code> y redirige a <code>app.html</code>. Esa página
+      empieza con un script diminuto e inline (antes de cargar cualquier CSS) que revisa esa misma llave y, si no
+      está, hace <code>location.replace("index.html")</code> — por eso entrar directo a la URL de <code>app.html</code>
+      sin haber iniciado sesión te devuelve a la portada. Cerrar sesión borra la llave.</p>
+      <div class="warn-box">
+        <span><b>Esto no es seguridad real</b>, y no pretende serlo. Es HTML/JS que corre enteramente en tu navegador:
+        cualquiera puede abrir las herramientas de desarrollador, leer <code>js/auth.js</code> y ver el usuario y la
+        contraseña en texto plano, o simplemente ejecutar <code>sessionStorage.setItem("rf_auth","1")</code> en la
+        consola para saltarse el login. Un sistema de acceso real necesita un backend que reciba la contraseña,
+        la compare con un hash guardado en una base de datos, y emita una sesión firmada (cookie HttpOnly o JWT) —
+        nada de eso puede existir en una página estática sin servidor. Aquí el login cumple su propósito académico:
+        una pantalla de acceso previa a la herramienta, como pide mostrar "una buena portada".</span>
+      </div>
+    </section>
+
+    <section id="arquitectura">
+      <h2><span class="num">3</span>Arquitectura de la app</h2>
+      <p>Cuando <code>app.html</code> termina de cargar sus scripts en orden, <code>js/app.js</code> hace lo siguiente
+      cada vez que cambias un campo o mueves un marcador del mapa:</p>
+      <ol>
+        <li><b>Lee</b> todos los inputs del formulario (<code>readInputs()</code>).</li>
+        <li><b>Valida</b> rangos básicos (latitud/longitud/altura/frecuencia); si algo está mal, muestra el aviso rojo
+        y no sigue.</li>
+        <li><b>Sincroniza</b> el mapa (<code>RF.mapApi.sync</code>) para que los marcadores reflejen los inputs.</li>
+        <li><b>Calcula</b> todo el perfil del enlace con <code>RF.compute(v)</code> (sección 4).</li>
+        <li><b>Pinta</b> el veredicto, las tarjetas de resultados y el gráfico SVG del perfil.</li>
+      </ol>
+      <p class="soft">Los módulos de cálculo (<code>geo.js</code>, <code>fresnel.js</code>) son funciones puras: no
+      tocan el DOM, solo reciben números y devuelven números. Eso permite probarlas sueltas desde la consola del
+      navegador — por ejemplo <code>RF.fresnelR1(5,5,5.8,10)</code> — para verificar un resultado sin tener que leer
+      toda la interfaz.</p>
+    </section>
+
+    <section id="formulas">
+      <h2><span class="num">4</span>Fórmulas y cálculos, paso a paso</h2>
+
+      <h3>4.1 — Distancia entre los sitios (Haversine)</h3>
+      <p>Con las coordenadas de A y B se calcula la distancia ortodrómica (línea recta sobre la esfera terrestre),
+      en <code>js/geo.js → haversineKm()</code>:</p>
+      <div class="formula">a = sin²(Δlat/2) + cos(latA)·cos(latB)·sin²(Δlon/2)
+d = 2·R⊕·asin(√a)&nbsp;&nbsp;&nbsp;con R⊕ = 6371.0088 km</div>
+
+      <h3>4.2 — Azimut (rumbo) de A hacia B</h3>
+      <div class="formula">az = atan2( sin(Δlon)·cos(latB),
+            cos(latA)·sin(latB) − sin(latA)·cos(latB)·cos(Δlon) )</div>
+
+      <h3>4.3 — Radio del primer elipsoide de Fresnel</h3>
+      <p>Es el corazón del enunciado. En cualquier punto del vano a distancias d₁ y d₂ de cada extremo (d₁+d₂=d, todo
+      en km), con la frecuencia <code>f</code> en GHz, la Rec. UIT-R P.526 da el radio r₁ en metros:</p>
+      <div class="formula">r₁ = 17.32 · √( d₁·d₂ / (f·d) )</div>
+      <p class="soft">El radio es máximo en el punto medio del vano (d₁=d₂=d/2) y se va a cero en los extremos —
+      por eso el elipsoide dibujado en el perfil tiene forma de balón de fútbol americano visto de lado.</p>
+
+      <h3>4.4 — Curvatura terrestre (abultamiento)</h3>
+      <p>La Tierra no es plana: en el punto medio de un vano largo, la superficie "sube" respecto a la línea recta
+      entre las dos bases. Ese abultamiento (en metros), corregido por refracción atmosférica con el factor k:</p>
+      <div class="formula">b = d₁·d₂ / (12.75 · k)</div>
+      <p class="soft">k=1 (sin refracción), k=4/3≈1.333 (atmósfera estándar, el valor típico de diseño), k=2/3≈0.667
+      (subrefracción, el peor caso que se usa para diseños conservadores).</p>
+
+      <h3>4.5 — Línea de vista y despeje</h3>
+      <p>La altura de la línea de vista (LOS) en cualquier punto x del vano es la interpolación lineal entre las dos
+      alturas de torre:</p>
+      <div class="formula">los(x) = hA + (hB − hA) · (x / d)</div>
+      <p>La "superficie efectiva" del terreno en ese punto es la curvatura, más el terreno real si está activado
+      (sección 7.3), más un obstáculo puntual si se cargó uno. El <b>despeje</b> es la resta:</p>
+      <div class="formula">despeje(x) = los(x) − superficie_efectiva(x)</div>
+
+      <h3>4.6 — Criterio de aptitud (60 % de F₁)</h3>
+      <p>El programa recorre 242 puntos del vano y en cada uno calcula la razón despeje/r₁. Se queda con el punto
+      donde esa razón es <b>mínima</b> (el punto crítico) y clasifica el resultado en 4 categorías. <b>Importante:</b>
+      este umbral del 60% es una simplificación categórica de la curva continua de pérdida por difracción que sí
+      define la P.526 (ver el detalle exacto en la sección 5, "Rigor frente a la P.526").</p>
+      <table class="check">
+        <tr><th>Razón despeje/F₁</th><th>Veredicto</th><th>Significado</th></tr>
+        <tr><td>≥ 1.0</td><td><span class="ok-pill">Despejado</span></td><td>El elipsoide está 100% libre; el enlace se comporta como espacio libre ideal.</td></tr>
+        <tr><td>0.6 – 1.0</td><td><span class="ok-pill">Apto</span></td><td>Cumple el mínimo del 60% recomendado; pérdidas por difracción despreciables.</td></tr>
+        <tr><td>0 – 0.6</td><td style="color:var(--amber);font-weight:600">Marginal</td><td>Hay línea de vista pero el elipsoide está parcialmente bloqueado: pérdidas adicionales por difracción.</td></tr>
+        <tr><td>&lt; 0</td><td style="color:var(--alert);font-weight:600">Obstruido</td><td>El obstáculo/terreno corta la línea de vista directa. El enlace no es viable así.</td></tr>
+      </table>
+
+      <h3>4.7 — Pérdida en espacio libre (FSPL) y longitud de onda</h3>
+      <div class="formula">FSPL(dB) = 32.44 + 20·log₁₀(d_km) + 20·log₁₀(f_MHz)
+λ(m) = c / f&nbsp;&nbsp;&nbsp;con c = 299 792 458 m/s</div>
+
+      <h3>4.8 — Horizonte radioeléctrico (extra, sección 7.1)</h3>
+      <div class="formula">horizonte(km) = 3.57 · √(k · h_m)&nbsp;&nbsp;&nbsp;(por cada torre; se suman ambas)</div>
+
+      <h3>4.9 — Presupuesto de enlace simplificado (extra, sección 7.2)</h3>
+      <div class="formula">Prx(dBm) = Ptx + Gtx + Grx − Lcable − FSPL
+margen(dB) = Prx − sensibilidad_Rx</div>
+
+      <h3>4.10 — Pérdida por difracción real, ν y J(ν) (P.526 §4.1)</h3>
+      <p>Esta es la fórmula que realmente cuantifica la difracción en la P.526 — el criterio del 60% (§4.6) es solo
+      una lectura simplificada de esta misma curva (ver sección 5). El parámetro adimensional de Fresnel-Kirchhoff
+      ν describe qué tan obstruido está el rayo directo por un obstáculo tipo filo de cuchillo de altura h por
+      encima de la línea de vista (h negativo = despejado):</p>
+      <div class="formula">ν = h · √( (2/λ) · (1/d1 + 1/d2) )&nbsp;&nbsp;&nbsp;(h,d1,d2,λ en metros)</div>
+      <p>Y la pérdida adicional por difracción, en dB, con la aproximación cerrada de Lee (válida para ν &gt; −0.7;
+      por debajo, la pérdida es despreciable y se reporta 0 dB):</p>
+      <div class="formula">J(ν) = 6.9 + 20·log₁₀( √((ν−0.1)² + 1) + ν − 0.1 )</div>
+      <p class="soft">Implementado en <code>js/fresnel.js → fresnelKirchhoffNu()</code> y <code>knifeEdgeLossDb()</code>,
+      evaluado en el punto crítico del vano y mostrado en la tarjeta "Pérdida por difracción".</p>
+    </section>
+
+    <section id="rigor">
+      <h2><span class="num">5</span>Rigor frente a la P.526: qué es literal y qué es simplificación</h2>
+      <p>Esta sección responde directamente la pregunta "¿de verdad se está usando la P.526, o solo se dice que sí?".
+      Se hizo una auditoría formula por fórmula:</p>
+      <table class="check">
+        <tr><th>Elemento</th><th>Origen</th><th>Nota</th></tr>
+        <tr><td>Radio del primer elipsoide r₁</td><td><span class="ok-pill">P.526 §2.1, literal</span></td><td>Misma fórmula, solo con f en GHz en vez de MHz.</td></tr>
+        <tr><td>Radio efectivo de la Tierra (factor k)</td><td><span class="ok-pill">P.526, literal</span></td><td>Concepto y fórmula estándar de refracción atmosférica.</td></tr>
+        <tr><td>Parámetro ν y pérdida J(ν)</td><td><span class="ok-pill">P.526 §4.1, literal</span></td><td>Agregado en esta revisión — es la curva real de difracción, no la simplificación categórica.</td></tr>
+        <tr><td>Umbral categórico del 60% de F₁</td><td>Simplificación pedagógica</td><td>Resume la curva J(ν) en 4 categorías fáciles de leer; no es una fórmula textual de la P.526.</td></tr>
+        <tr><td>Doble verificación con k crítico (0.67)</td><td>Práctica de P.530</td><td>La P.530 (enlaces terrestres LOS) recomienda revisar despeje en condición promedio Y en subrefracción; lo automatizamos.</td></tr>
+        <tr><td>FSPL (pérdida en espacio libre)</td><td>P.525, no P.526</td><td>Recomendación distinta; se muestra como dato complementario, no como parte del diagnóstico de Fresnel.</td></tr>
+        <tr><td>Horizonte radioeléctrico, presupuesto de enlace</td><td>Ingeniería de RF general</td><td>No provienen de una recomendación UIT-R puntual; son valor agregado.</td></tr>
+        <tr><td>Obstáculo único / terreno real</td><td>Simplificación geométrica</td><td>La P.526 también cubre terrenos irregulares con métodos más elaborados (Bullington, múltiples cilindros) que no se implementaron.</td></tr>
+      </table>
+      <p class="soft">En síntesis: lo que evalúa si un punto del enlace está "despejado" (r₁ y ν/J(ν)) sí es P.526
+      literal. Lo que decidimos MOSTRAR como veredicto (las 4 categorías) es una simplificación de esa misma curva,
+      hecha explícita aquí para que puedas defenderlo con precisión.</p>
+    </section>
+
+    <section id="ejemplo">
+      <h2><span class="num">6</span>Ejemplo numérico completo (verificable a mano)</h2>
+      <p>Con los valores que trae la app por defecto — Barranquilla (A) y Puerto Colombia (B), 5.8 GHz, k=4/3, sin
+      obstáculo ni terreno real — estos son los números exactos que produce la aplicación. Puedes repetirlos con una
+      calculadora para comprobar que el programa no tiene errores de cálculo:</p>
+      <div class="example">
+        <h4>Datos de entrada</h4>
+        <table>
+          <tr><td>Sitio A</td><td>lat 11.00410°, lon −74.80700°, torre 30 m</td></tr>
+          <tr><td>Sitio B</td><td>lat 10.98780°, lon −74.95470°, torre 25 m</td></tr>
+          <tr><td>Frecuencia</td><td>5.8 GHz = 5 800 000 000 Hz</td></tr>
+          <tr><td>Factor k</td><td>1.3333 (4/3, atmósfera estándar)</td></tr>
+        </table>
+      </div>
+      <div class="example">
+        <h4>Resultados intermedios y finales</h4>
+        <table>
+          <tr><td>Distancia A–B (Haversine)</td><td>d = 16.224 km</td></tr>
+          <tr><td>Azimut A→B</td><td>263.6°</td></tr>
+          <tr><td>Punto crítico</td><td>x = 8.75 km desde A &nbsp;(d₁=8.75, d₂=7.474)</td></tr>
+          <tr><td>Radio F₁ en el punto crítico</td><td>r₁ = 17.32·√(8.75·7.474/(5.8·16.224)) = <b>14.44 m</b></td></tr>
+          <tr><td>60 % de F₁</td><td>0.6 × 14.44 = <b>8.66 m</b></td></tr>
+          <tr><td>Abultamiento por curvatura</td><td>b = 8.75·7.474/(12.75×1.3333) = 3.85 m</td></tr>
+          <tr><td>Línea de vista en el punto crítico</td><td>los = 30 + (25−30)×(8.75/16.224) = 27.30 m</td></tr>
+          <tr><td>Despeje mínimo</td><td>27.30 − 3.85 = <b>23.46 m</b></td></tr>
+          <tr><td>Razón despeje/F₁</td><td>23.46 / 14.44 = <b>1.62</b> → <span class="ok-pill">Despejado</span></td></tr>
+          <tr><td>FSPL</td><td>32.44+20·log₁₀(16.224)+20·log₁₀(5800) = <b>131.9 dB</b></td></tr>
+          <tr><td>Longitud de onda</td><td>299 792 458 / 5.8×10⁹ = <b>0.0517 m</b></td></tr>
+          <tr><td>Horizonte radioeléctrico</td><td>3.57√(1.333×30) + 3.57√(1.333×25) = 22.58+20.61 = <b>43.2 km</b></td></tr>
+          <tr><td>ν en el punto crítico</td><td>−23.46·√((2/0.0517)·(1/8750+1/7474)) = <b>−2.30</b></td></tr>
+          <tr><td>Pérdida por difracción J(ν)</td><td>ν ≤ −0.7 → <b>0.0 dB</b> (sin pérdida apreciable, path claramente despejado)</td></tr>
+          <tr><td>Verificación con k crítico (0.667)</td><td>razón despeje/F₁ = <b>1.36</b> → <span class="ok-pill">Despejado</span> (sigue siendo apto incluso en subrefracción)</td></tr>
+        </table>
+      </div>
+      <div class="example">
+        <h4>Con presupuesto de enlace activado (Ptx=20 dBm, Gtx=Grx=24 dBi, pérdidas cable=2 dB, sensibilidad=−75 dBm)</h4>
+        <table>
+          <tr><td>Potencia recibida</td><td>20+24+24−2−131.9 = <b>−65.9 dBm</b></td></tr>
+          <tr><td>Margen de desvanecimiento</td><td>−65.9−(−75) = <b>9.1 dB</b> (positivo → hay margen)</td></tr>
+        </table>
+      </div>
+      <div class="example">
+        <h4>Contraprueba con obstrucción real (activando "Terreno real" en el mismo enlace)</h4>
+        <p class="soft" style="margin:0 0 8px">Con elevación real de Open-Elevation, el punto crítico se mueve a
+        x=13.87 km (cerca de las colinas costeras de Puerto Colombia) y el resultado cambia por completo — así se ve
+        un caso realmente obstruido, no solo el caso despejado de arriba:</p>
+        <table>
+          <tr><td>Despeje en el punto crítico</td><td><b>−60.8 m</b> (negativo = obstruido)</td></tr>
+          <tr><td>Razón despeje/F₁</td><td><b>−6.14</b> → <span style="color:var(--alert);font-weight:600">Obstruido</span></td></tr>
+          <tr><td>ν en el punto crítico</td><td><b>+8.43</b> (positivo = obstrucción real del rayo)</td></tr>
+          <tr><td>Pérdida por difracción J(ν)</td><td><b>31.4 dB</b> — coherente con un bloqueo físico del terreno, no un simple "marginal"</td></tr>
+        </table>
+      </div>
+      <p class="soft">Los primeros bloques son exactamente los números que muestra la interfaz con los valores por
+      defecto; el último se capturó activando terreno real sobre ese mismo enlace. Ambos se leyeron directamente de
+      la aplicación en ejecución, no se calcularon aparte.</p>
+    </section>
+
+    <section id="nuevas">
+      <h2><span class="num">7</span>Funciones nuevas: qué hacen y por qué</h2>
+
+      <h3>7.1 — Horizonte radioeléctrico</h3>
+      <p>Además del criterio de Fresnel, se muestra la distancia máxima a la que la curvatura terrestre permite ver
+      cada antena (según su altura y el factor k). Si la distancia del enlace supera ese horizonte, se agrega una
+      nota al veredicto — es una segunda forma, más intuitiva, de leer el mismo efecto de curvatura que ya está
+      incorporado en el cálculo de despeje.</p>
+
+      <h3>7.2 — Presupuesto de enlace</h3>
+      <p>Con potencia de transmisión, ganancias de antena, pérdidas de cable y sensibilidad del receptor (todos
+      opcionales), la app calcula la potencia recibida y el margen de desvanecimiento — el complemento natural del
+      FSPL que ya se pedía, para saber no solo si hay línea de vista sino si el enlace va a "escuchar" señal.</p>
+
+      <h3>7.3 — Terreno real (Open-Elevation)</h3>
+      <p>Al activar esta opción, la app consulta la <a href="https://open-elevation.com" target="_blank" rel="noopener">API pública Open-Elevation</a>
+      con 242 puntos entre A y B y reemplaza el modelo de terreno plano por el relieve real (msnm), sumado a la
+      curvatura terrestre. Es opcional y con respaldo: si no hay internet o la API no responde, el botón se
+      desmarca solo y la app sigue funcionando con el modelo plano — nunca se rompe por depender de un tercero.
+      Esto encaja directamente con lo que permite el enunciado: "cualquier fuente de información cartográfica
+      disponible en la red".</p>
+
+      <h3>7.4 — Escenarios guardados</h3>
+      <p>Cada enlace que armas (coordenadas, alturas, frecuencia, presupuesto...) se puede guardar con un nombre en
+      <code>localStorage</code> del navegador y recuperarlo después. Pensado para el trabajo en equipo: cada
+      integrante puede guardar y comparar la configuración que propuso sin perder las demás.</p>
+
+      <h3>7.5 — Tema claro/oscuro, impresión y logout</h3>
+      <p>El interruptor de tema persiste la preferencia entre sesiones. El botón de impresión usa
+      <code>window.print()</code> con una hoja de estilos <code>print.css</code> que oculta controles y dibuja un
+      informe limpio (veredicto + resultados + perfil) listo para exportar a PDF desde el propio diálogo de
+      impresión del navegador. El botón de salida limpia la sesión y regresa a la portada.</p>
+
+      <h3>7.6 — Pérdida por difracción real y verificación con k crítico</h3>
+      <p>Agregados tras la auditoría de rigor (sección 5): la tarjeta "Pérdida por difracción" calcula ν y J(ν) en
+      el punto crítico (P.526 §4.1, fórmula exacta en 4.10) y muestra un número en dB en vez de solo una categoría.
+      Además, cada cálculo corre automáticamente una segunda vez con el k crítico de subrefracción (0.667) y agrega
+      una línea de verificación bajo el veredicto principal — sin pedir ningún campo nuevo, porque reutiliza el
+      mismo <code>RF.compute()</code> con un k distinto.</p>
+    </section>
+
+    <section id="cumplimiento">
+      <h2><span class="num">8</span>Cumplimiento del enunciado</h2>
+      <table class="check">
+        <tr><th>Requisito del enunciado</th><th></th><th>Cómo se cumple</th></tr>
+        <tr><td>Diagnosticar la primera zona de Fresnel</td><td><span class="ok-pill">✓ cumple</span></td><td>Sección 4.3–4.6: cálculo de r₁ y criterio del 60% en cada punto del vano.</td></tr>
+        <tr><td>A partir de la altura de la torre de cada antena</td><td><span class="ok-pill">✓ cumple</span></td><td>Campos "Altura de torre (m)" para sitio A y B.</td></tr>
+        <tr><td>Ubicación geográfica (lat/long) de los dos puntos</td><td><span class="ok-pill">✓ cumple</span></td><td>Campos de latitud/longitud, además de marcadores arrastrables y "fijar en el mapa".</td></tr>
+        <tr><td>Frecuencia específica</td><td><span class="ok-pill">✓ cumple</span></td><td>Campo de frecuencia con selector de unidad (Hz–GHz).</td></tr>
+        <tr><td>Uso de fuente cartográfica de la red</td><td><span class="ok-pill">✓ cumple</span></td><td>Mapa con OpenStreetMap (Leaflet) + elevación real vía Open-Elevation.</td></tr>
+        <tr><td>Calidad de la interfaz de usuario</td><td><span class="ok-pill">✓ cumple</span></td><td>Sistema de diseño propio (tipografía, color, iconos), modo oscuro, portada, mapa interactivo.</td></tr>
+        <tr><td>Presentación del resultado</td><td><span class="ok-pill">✓ cumple</span></td><td>Veredicto con semáforo de color, 12 tarjetas de lectura, perfil gráfico del enlace, informe imprimible.</td></tr>
+        <tr><td>Trabajo en equipo (hasta 3 estudiantes)</td><td><span class="ok-pill">✓ apoyo</span></td><td>Escenarios guardados para que cada integrante pruebe y compare su configuración.</td></tr>
+      </table>
+    </section>
+
+    <section id="limitaciones">
+      <h2><span class="num">9</span>Limitaciones conocidas</h2>
+      <ul>
+        <li>El login es solo del lado del cliente (ver sección 2) — no es un control de acceso real.</li>
+        <li>El veredicto categórico (Despejado/Apto/Marginal/Obstruido) sigue siendo una simplificación en 4 niveles
+        de la curva continua de J(ν); ahora coexiste con el valor exacto en dB (sección 4.10) para quien necesite el
+        dato preciso, pero el semáforo de color no deja de ser una lectura simplificada.</li>
+        <li>La verificación con k crítico (sección 7.6) evalúa un único k de subrefracción de referencia (0.667);
+        un análisis de disponibilidad estadística real (P.530) usaría distribuciones de k propias del clima de la
+        zona, que no calculamos aquí.</li>
+        <li>El terreno real depende de una API pública gratuita de terceros (Open-Elevation), que puede ser lenta o
+        no estar disponible en todo momento; por diseño, la app nunca se bloquea por eso.</li>
+        <li>El mapa (OpenStreetMap) y las tipografías (Google Fonts) requieren conexión a internet para verse; sin
+        red, la app sigue calculando y mostrando el perfil, solo sin el mapa de fondo.</li>
+        <li>El terreno intermedio, cuando no se usa "terreno real", se asume plano al nivel de las bases de las
+        torres — el obstáculo puntual es una forma manual de aproximar un cerro o edificio conocido.</li>
+        <li>Los escenarios guardados viven en el navegador de cada quien (localStorage): no se sincronizan entre
+        computadores ni entre integrantes del equipo automáticamente.</li>
+      </ul>
+    </section>
+
+  </article>
+
+  <div class="doc-foot">Gestión de Redes Telemáticas · Elipsoide de Fresnel (ITU-R P.526) · Documentación técnica</div>
+</div>
+</body>
+</html>
