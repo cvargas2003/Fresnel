@@ -19,6 +19,9 @@
     <h1>Elipsoide de Fresnel — cómo funciona y cómo verificarlo</h1>
     <p>Este documento explica la arquitectura del proyecto, cada fórmula usada en los cálculos (con un ejemplo numérico
     reproducible a mano) y un checklist de cumplimiento contra el enunciado de la tarea.</p>
+    <p style="margin-top:14px;font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.62)">
+      Desarrollado por Cesar Vargas (20211578127) · Andrea Yurany Lara Mancipe (20232578116) · Maria Camila Palacio Romero (20232578031)
+    </p>
   </header>
 
   <nav class="toc">
@@ -73,21 +76,20 @@
     </section>
 
     <section id="login">
-      <h2><span class="num">2</span>El login y sus límites</h2>
-      <p><b>Usuario:</b> <code>admin</code> &nbsp; <b>Contraseña:</b> <code>123</code></p>
-      <p>Al enviar el formulario, <code>js/auth.js</code> compara el texto ingresado contra esas dos constantes y, si
-      coinciden, guarda <code>sessionStorage["rf_auth"]="1"</code> y redirige a <code>app.html</code>. Esa página
-      empieza con un script diminuto e inline (antes de cargar cualquier CSS) que revisa esa misma llave y, si no
-      está, hace <code>location.replace("index.html")</code> — por eso entrar directo a la URL de <code>app.html</code>
-      sin haber iniciado sesión te devuelve a la portada. Cerrar sesión borra la llave.</p>
+      <h2><span class="num">2</span>El acceso y sus límites</h2>
+      <p>No pide usuario ni contraseña: la portada muestra un único botón, <b>Ingresar</b>. Al pulsarlo,
+      <code>js/auth.js</code> guarda <code>sessionStorage["rf_auth"]="1"</code> y redirige a <code>app.html</code>.
+      Esa página empieza con un script diminuto e inline (antes de cargar cualquier CSS) que revisa esa misma llave
+      y, si no está, hace <code>location.replace("index.html")</code> — por eso entrar directo a la URL de
+      <code>app.html</code> sin haber pasado por la portada te devuelve a ella. Cerrar sesión borra la llave.</p>
       <div class="warn-box">
-        <span><b>Esto no es seguridad real</b>, y no pretende serlo. Es HTML/JS que corre enteramente en tu navegador:
-        cualquiera puede abrir las herramientas de desarrollador, leer <code>js/auth.js</code> y ver el usuario y la
-        contraseña en texto plano, o simplemente ejecutar <code>sessionStorage.setItem("rf_auth","1")</code> en la
-        consola para saltarse el login. Un sistema de acceso real necesita un backend que reciba la contraseña,
-        la compare con un hash guardado en una base de datos, y emita una sesión firmada (cookie HttpOnly o JWT) —
-        nada de eso puede existir en una página estática sin servidor. Aquí el login cumple su propósito académico:
-        una pantalla de acceso previa a la herramienta, como pide mostrar "una buena portada".</span>
+        <span><b>Esto no es control de acceso</b>, y no pretende serlo. Es, literalmente, una pantalla intermedia:
+        cualquiera que abra <code>app.html</code> directamente, o ejecute
+        <code>sessionStorage.setItem("rf_auth","1")</code> en la consola, entra igual — no hay usuario ni contraseña
+        que validar. Un control de acceso real necesitaría un backend que autentique credenciales y emita una sesión
+        firmada (cookie HttpOnly o JWT), algo que no puede existir en una página estática sin servidor. Aquí esta
+        pantalla cumple el propósito académico de mostrar una portada previa a la herramienta, no el de restringir
+        quién puede usarla.</span>
       </div>
     </section>
 

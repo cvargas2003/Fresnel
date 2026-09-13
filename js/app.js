@@ -14,7 +14,6 @@
     location.replace("index.html");
     return;
   }
-  $("whoami").textContent = "admin";
   $("btnLogout").addEventListener("click", function(){
     RF.auth.logout();
     location.replace("index.html");

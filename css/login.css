@@ -198,6 +198,7 @@ body{
 .shake{animation:shake .5s}
 
 .login-foot{margin-top:18px;text-align:center;font-size:11px;color:var(--ink-faint);font-family:var(--mono)}
+.credits{margin-top:12px;padding-top:12px;border-top:1px solid var(--rule-soft);line-height:1.7;color:var(--ink-faint)}
 
 @media (prefers-reduced-motion:reduce){
   .ground,.ring,.pulse,.ping,.panel-eyebrow .dot{ animation:none !important; }

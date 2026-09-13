@@ -58,31 +58,23 @@
       <i class="tick tl"></i><i class="tick tr"></i><i class="tick bl"></i><i class="tick br"></i>
       <form class="login-card" id="loginForm" autocomplete="off" novalidate>
         <div class="panel-eyebrow"><span class="dot"></span> ACCESS · 01</div>
-        <h2>Iniciar sesión</h2>
-        <p class="lead">Ingresa tus credenciales para entrar a la herramienta de diagnóstico.</p>
-
-        <div class="login-error" id="loginError" hidden>
-          <svg class="ico" style="margin-top:1px"><use href="#i-warn"/></svg>
-          <span>Usuario o contraseña incorrectos.</span>
-        </div>
-
-        <div class="field-line">
-          <label for="user">Usuario</label>
-          <svg class="ico"><use href="#i-user"/></svg>
-          <input type="text" id="user" name="user" placeholder="admin" autocomplete="username">
-        </div>
-        <div class="field-line">
-          <label for="pass">Contraseña</label>
-          <svg class="ico"><use href="#i-lock"/></svg>
-          <input type="password" id="pass" name="pass" placeholder="••••••" autocomplete="current-password">
-        </div>
+        <h2>Bienvenido</h2>
+        <p class="lead">Pulsa Ingresar para entrar a la herramienta de diagnóstico.</p>
 
         <div class="login-actions">
           <button type="submit" class="primary">INGRESAR <span class="arrow">→</span></button>
         </div>
-        <div class="panel-status" id="panelStatus"><span class="glyph">◇</span> <span id="panelStatusTxt">esperando credenciales</span></div>
+        <div class="panel-status" id="panelStatus"><span class="glyph">◇</span> <span id="panelStatusTxt">listo para ingresar</span></div>
 
-        <div class="login-foot">Acceso de uso académico — sesión válida mientras esta pestaña permanezca abierta.</div>
+        <div class="login-foot">
+          Acceso de uso académico — sesión válida mientras esta pestaña permanezca abierta.
+          <div class="credits">
+            Desarrollado por<br>
+            Cesar Vargas — 20211578127<br>
+            Andrea Yurany Lara Mancipe — 20232578116<br>
+            Maria Camila Palacio Romero — 20232578031
+          </div>
+        </div>
       </form>
     </div>
   </section>
@@ -98,8 +90,6 @@
   if(RF.auth.isLoggedIn()){ location.replace("app.html"); return; }
 
   var form = document.getElementById("loginForm");
-  var errBox = document.getElementById("loginError");
-  var card = document.querySelector(".login-card");
   var status = document.getElementById("panelStatus");
   var statusTxt = document.getElementById("panelStatusTxt");
   var statusGlyph = status.querySelector(".glyph");
@@ -112,20 +102,11 @@
 
   form.addEventListener("submit", function(e){
     e.preventDefault();
-    var user = document.getElementById("user").value.trim();
-    var pass = document.getElementById("pass").value;
-    setStatus("busy", "◆", "verificando…");
+    setStatus("busy", "◆", "cargando…");
     setTimeout(function(){
-      if(RF.auth.tryLogin(user, pass)){
-        setStatus("ok", "✓", "acceso concedido");
-        setTimeout(function(){ location.href = "app.html"; }, 260);
-      }else{
-        setStatus("err", "✕", "credenciales inválidas");
-        errBox.hidden = false;
-        card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake");
-        document.getElementById("pass").value = "";
-        document.getElementById("pass").focus();
-      }
+      RF.auth.login();
+      setStatus("ok", "✓", "acceso concedido");
+      setTimeout(function(){ location.href = "app.html"; }, 260);
     }, 320);
   });
 })();
