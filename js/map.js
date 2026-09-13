@@ -15,12 +15,17 @@
     init: function(elId, initial, onDrag, onPick){
       onDragCb = onDrag; onPickCb = onPick;
       map = L.map(elId, {
-        zoomControl:true,
-        zoomAnimation:false, markerZoomAnimation:false, fadeAnimation:false
+        zoomControl:true
       }).setView([(initial.latA+initial.latB)/2, (initial.lonA+initial.lonB)/2], 11);
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
-        maxZoom:19, attribution:"&copy; OpenStreetMap"
+      // Mosaicos vía Wikimedia (datos de OpenStreetMap, sin necesidad de clave
+      // de API) en vez del servidor crudo tile.openstreetmap.org: ese servidor
+      // está pensado solo para uso muy ocasional y bloquea con 403
+      // ("osm.wiki/Blocked") en cuanto detecta el tráfico repetido típico de
+      // una app en desarrollo/pruebas.
+      L.tileLayer("https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png",{
+        maxZoom:19,
+        attribution:"&copy; OpenStreetMap contributors, tiles: Wikimedia"
       }).addTo(map);
 
       mA = L.marker([initial.latA,initial.lonA],{draggable:true,title:"Sitio A"})
@@ -61,6 +66,11 @@
 
     fitTo: function(latA,lonA,latB,lonB){
       if(!map) return;
+      // invalidateSize() antes del primer fitBounds: si el contenedor cambió
+      // de tamaño (o aún no tenía su tamaño final) desde que Leaflet lo midió
+      // por última vez, fitBounds usaría ese tamaño viejo/cero en caché y
+      // calcularía un zoom completamente equivocado (p. ej. el mundo entero).
+      map.invalidateSize(false);
       map.fitBounds(L.latLngBounds([[latA,lonA],[latB,lonB]]).pad(0.35));
     },
 

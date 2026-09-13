@@ -278,5 +278,9 @@
   }catch(e){ /* sin red: la app sigue funcionando sin mapa */ }
 
   renderScenarios();
-  run(true);
+  run(false);
+  // El primer fitBounds justo al iniciar puede calcular mal el zoom porque
+  // Leaflet aún no terminó de medir el tamaño real del contenedor en ese
+  // instante; se difiere un frame para que el mapa sí quede centrado en A/B.
+  requestAnimationFrame(function(){ run(true); });
 })();
