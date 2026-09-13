@@ -18,14 +18,16 @@
         zoomControl:true
       }).setView([(initial.latA+initial.latB)/2, (initial.lonA+initial.lonB)/2], 11);
 
-      // Mosaicos vía Wikimedia (datos de OpenStreetMap, sin necesidad de clave
-      // de API) en vez del servidor crudo tile.openstreetmap.org: ese servidor
-      // está pensado solo para uso muy ocasional y bloquea con 403
-      // ("osm.wiki/Blocked") en cuanto detecta el tráfico repetido típico de
-      // una app en desarrollo/pruebas.
-      L.tileLayer("https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png",{
+      // Mosaicos vía Esri (servicio público pensado para incrustarse en sitios
+      // de terceros, sin clave de API). Se probaron antes tile.openstreetmap.org
+      // (bloquea con 403 por exceso de uso) y Wikimedia (no carga al publicar
+      // en un dominio ajeno como github.io, probablemente por protección
+      // anti-hotlinking) — Esri es el que de verdad funciona en producción.
+      // OJO: el orden de la plantilla es {z}/{y}/{x}, distinto del habitual
+      // {z}/{x}/{y} de OSM/Wikimedia.
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{
         maxZoom:19,
-        attribution:"&copy; OpenStreetMap contributors, tiles: Wikimedia"
+        attribution:"Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ"
       }).addTo(map);
 
       mA = L.marker([initial.latA,initial.lonA],{draggable:true,title:"Sitio A"})
