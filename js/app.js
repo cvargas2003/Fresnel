@@ -152,7 +152,7 @@
     if(fit && RF.mapApi.isReady() && res.d>0){ RF.mapApi.fitTo(v.latA,v.lonA,v.latB,v.lonB); }
   }
 
-  /* ---------- Terreno real (Open-Elevation) ---------- */
+  /* ---------- Terreno real (Open-Meteo / OpenTopoData / Open-Elevation) ---------- */
   function setTerrainStatus(msg, kind){
     var el = $("terrainStatus");
     el.textContent = msg;
@@ -164,7 +164,7 @@
     setTerrainStatus("Consultando elevación real…", "");
     RF.fetchElevationProfile(v.latA,v.lonA,v.latB,v.lonB).then(function(arr){
       terrainData = arr;
-      setTerrainStatus("Terreno real cargado (" + arr.length + " muestras). Vuelve a pulsar Actualizar si mueves los sitios.", "ok-text");
+      setTerrainStatus("Terreno real cargado desde " + (RF.elevationSource || "la red") + " (" + arr.length + " muestras). Vuelve a pulsar Actualizar si mueves los sitios.", "ok-text");
       run(false);
     }).catch(function(err){
       terrainData = null;
