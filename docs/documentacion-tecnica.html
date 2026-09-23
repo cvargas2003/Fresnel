@@ -62,7 +62,7 @@
 │  ├─ theme.js             tema claro/oscuro persistido
 │  ├─ geo.js               geodesia: distancia, azimut
 │  ├─ fresnel.js           física del enlace + compute() principal
-│  ├─ elevation.js         terreno real vía API Open-Elevation
+│  ├─ elevation.js         terreno real (Open-Meteo → OpenTopoData → Open-Elevation)
 │  ├─ scenarios.js         guardar/cargar configuraciones (localStorage)
 │  ├─ map.js               mapa Leaflet (marcadores, arrastre, clic-para-fijar)
 │  ├─ profile.js           dibuja el perfil SVG del enlace
@@ -73,6 +73,22 @@
       <code>window.RF</code> (namespace), en vez de usar <code>import/export</code>. Es la forma "sin build tools" de
       tener módulos separados sin ensuciar el espacio global con decenas de nombres sueltos, y funciona igual de bien
       abriendo el archivo directamente o sirviéndolo desde un servidor.</p>
+
+      <h3>1.1 — Lenguaje y librerías</h3>
+      <p>Todo el proyecto es <b>HTML + CSS + JavaScript</b> plano (sin TypeScript, sin React/Vue, sin Node.js en
+      producción). No hay backend ni base de datos: corre entero en el navegador. Las únicas dependencias externas se
+      cargan por CDN, ninguna se instala:</p>
+      <table class="check">
+        <tr><th>Librería / servicio</th><th>Para qué</th><th>Dónde se usa</th></tr>
+        <tr><td><a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet 1.9.4</a></td><td>Mapa interactivo (marcadores arrastrables, clic-para-fijar)</td><td><code>js/map.js</code></td></tr>
+        <tr><td>Esri World Street Map</td><td>Mosaicos/imágenes del mapa, sin necesidad de clave de API</td><td><code>js/map.js</code></td></tr>
+        <tr><td><a href="https://open-meteo.com/en/docs/elevation-api" target="_blank" rel="noopener">Open-Meteo Elevation</a> (+ respaldos)</td><td>Elevación real del terreno (opcional, botón "Terreno real"). Principal: Open-Meteo (Copernicus DEM). Respaldos automáticos: OpenTopoData (SRTM) y Open-Elevation</td><td><code>js/elevation.js</code></td></tr>
+        <tr><td>Google Fonts</td><td>Tipografías: Space Grotesk (títulos), IBM Plex Mono/Sans (todo lo demás)</td><td><code>&lt;link&gt;</code> en <code>index.html</code> / <code>app.html</code></td></tr>
+      </table>
+      <p class="soft">Los mosaicos de mapa pasaron por tres proveedores antes de este: <code>tile.openstreetmap.org</code>
+      (bloqueó con 403 por exceso de uso durante las pruebas), CARTO (empezó a exigir clave de API) y Wikimedia
+      (funcionaba en local pero no cargaba publicado en un dominio ajeno como GitHub Pages, por protección
+      anti-hotlinking). Esri es el que efectivamente funciona tanto en local como en producción.</p>
     </section>
 
     <section id="login">
@@ -113,6 +129,26 @@
 
     <section id="formulas">
       <h2><span class="num">4</span>Fórmulas y cálculos, paso a paso</h2>
+
+      <h3>4.0 — Tabla de referencia rápida: cálculo → función → archivo</h3>
+      <p class="soft">Para ubicar cualquier cálculo directamente en el código, sin tener que leer todo este documento:</p>
+      <table class="check">
+        <tr><th>Cálculo</th><th>Función</th><th>Archivo</th></tr>
+        <tr><td>Distancia A↔B (Haversine)</td><td><code>haversineKm()</code></td><td><code>js/geo.js</code></td></tr>
+        <tr><td>Azimut A→B</td><td><code>bearingDeg()</code></td><td><code>js/geo.js</code></td></tr>
+        <tr><td>Radio del elipsoide de Fresnel (r₁)</td><td><code>fresnelR1()</code></td><td><code>js/fresnel.js</code></td></tr>
+        <tr><td>Curvatura terrestre (abultamiento)</td><td><code>bulge()</code></td><td><code>js/fresnel.js</code></td></tr>
+        <tr><td>Línea de vista, despeje y punto crítico</td><td><code>compute()</code></td><td><code>js/fresnel.js</code></td></tr>
+        <tr><td>Veredicto (Despejado/Apto/Marginal/Obstruido)</td><td><code>classify()</code></td><td><code>js/app.js</code></td></tr>
+        <tr><td>Parámetro ν y pérdida por difracción J(ν)</td><td><code>fresnelKirchhoffNu()</code>, <code>knifeEdgeLossDb()</code></td><td><code>js/fresnel.js</code></td></tr>
+        <tr><td>Pérdida en espacio libre (FSPL)</td><td><code>fspl()</code></td><td><code>js/fresnel.js</code></td></tr>
+        <tr><td>Longitud de onda (λ)</td><td><code>wavelength()</code></td><td><code>js/fresnel.js</code></td></tr>
+        <tr><td>Horizonte radioeléctrico</td><td><code>radioHorizonKm()</code></td><td><code>js/fresnel.js</code></td></tr>
+        <tr><td>Presupuesto de enlace (Prx, margen)</td><td><code>linkBudget()</code></td><td><code>js/fresnel.js</code></td></tr>
+        <tr><td>Verificación con k crítico de subrefracción</td><td>llama a <code>compute()</code> con <code>k=0.6667</code></td><td><code>js/app.js</code> (función <code>run()</code>)</td></tr>
+        <tr><td>Elevación real del terreno</td><td><code>fetchElevationProfile()</code></td><td><code>js/elevation.js</code></td></tr>
+        <tr><td>Dibujo del perfil del enlace (SVG)</td><td><code>drawProfile()</code></td><td><code>js/profile.js</code></td></tr>
+      </table>
 
       <h3>4.1 — Distancia entre los sitios (Haversine)</h3>
       <p>Con las coordenadas de A y B se calcula la distancia ortodrómica (línea recta sobre la esfera terrestre),
@@ -246,14 +282,14 @@ margen(dB) = Prx − sensibilidad_Rx</div>
       </div>
       <div class="example">
         <h4>Contraprueba con obstrucción real (activando "Terreno real" en el mismo enlace)</h4>
-        <p class="soft" style="margin:0 0 8px">Con elevación real de Open-Elevation, el punto crítico se mueve a
-        x=13.87 km (cerca de las colinas costeras de Puerto Colombia) y el resultado cambia por completo — así se ve
-        un caso realmente obstruido, no solo el caso despejado de arriba:</p>
+        <p class="soft" style="margin:0 0 8px">Con elevación real de Open-Meteo (Copernicus DEM), el punto crítico se
+        mueve a x=13.60 km (cerca de las colinas costeras de Puerto Colombia) y el resultado cambia por completo — así
+        se ve un caso realmente obstruido, no solo el caso despejado de arriba:</p>
         <table>
-          <tr><td>Despeje en el punto crítico</td><td><b>−60.8 m</b> (negativo = obstruido)</td></tr>
-          <tr><td>Razón despeje/F₁</td><td><b>−6.14</b> → <span style="color:var(--alert);font-weight:600">Obstruido</span></td></tr>
-          <tr><td>ν en el punto crítico</td><td><b>+8.43</b> (positivo = obstrucción real del rayo)</td></tr>
-          <tr><td>Pérdida por difracción J(ν)</td><td><b>31.4 dB</b> — coherente con un bloqueo físico del terreno, no un simple "marginal"</td></tr>
+          <tr><td>Despeje en el punto crítico</td><td><b>−74.85 m</b> (negativo = obstruido)</td></tr>
+          <tr><td>Razón despeje/F₁</td><td><b>−7.02</b> → <span style="color:var(--alert);font-weight:600">Obstruido</span></td></tr>
+          <tr><td>ν en el punto crítico</td><td><b>≈ +9.9</b> (positivo = obstrucción real del rayo)</td></tr>
+          <tr><td>Pérdida por difracción J(ν)</td><td><b>32.8 dB</b> — coherente con un bloqueo físico del terreno, no un simple "marginal"</td></tr>
         </table>
       </div>
       <p class="soft">Los primeros bloques son exactamente los números que muestra la interfaz con los valores por
@@ -275,13 +311,19 @@ margen(dB) = Prx − sensibilidad_Rx</div>
       opcionales), la app calcula la potencia recibida y el margen de desvanecimiento — el complemento natural del
       FSPL que ya se pedía, para saber no solo si hay línea de vista sino si el enlace va a "escuchar" señal.</p>
 
-      <h3>7.3 — Terreno real (Open-Elevation)</h3>
-      <p>Al activar esta opción, la app consulta la <a href="https://open-elevation.com" target="_blank" rel="noopener">API pública Open-Elevation</a>
-      con 242 puntos entre A y B y reemplaza el modelo de terreno plano por el relieve real (msnm), sumado a la
-      curvatura terrestre. Es opcional y con respaldo: si no hay internet o la API no responde, el botón se
-      desmarca solo y la app sigue funcionando con el modelo plano — nunca se rompe por depender de un tercero.
-      Esto encaja directamente con lo que permite el enunciado: "cualquier fuente de información cartográfica
-      disponible en la red".</p>
+      <h3>7.3 — Terreno real (Open-Meteo con respaldos)</h3>
+      <p>Al activar esta opción, la app pide el relieve real (msnm) de 242 puntos entre A y B — en lotes de 100, que es
+      el máximo por petición — y lo suma a la curvatura terrestre en lugar del modelo plano. Consulta varias fuentes
+      cartográficas gratuitas en cadena de respaldo, y usa la primera que responda bien:</p>
+      <ol>
+        <li><b><a href="https://open-meteo.com/en/docs/elevation-api" target="_blank" rel="noopener">Open-Meteo</a></b> (modelo Copernicus DEM 90 m) — principal: rápida y con CORS abierto.</li>
+        <li><b><a href="https://www.opentopodata.org" target="_blank" rel="noopener">OpenTopoData</a></b> (SRTM 90 m) — primer respaldo (limitado a 1 petición/s).</li>
+        <li><b>Open-Elevation</b> — último recurso (servicio inestable; fue el que originalmente fallaba con "Failed to fetch").</li>
+      </ol>
+      <p>El estado de "Terreno real cargado" indica de qué fuente vino el dato (<code>RF.elevationSource</code>). Todo
+      es opcional y con respaldo: si no hay internet o las tres fuentes fallan, el botón se desmarca solo y la app
+      sigue funcionando con el modelo plano — nunca se rompe por depender de un tercero. Esto encaja directamente con
+      lo que permite el enunciado: "cualquier fuente de información cartográfica disponible en la red".</p>
 
       <h3>7.4 — Escenarios guardados</h3>
       <p>Cada enlace que armas (coordenadas, alturas, frecuencia, presupuesto...) se puede guardar con un nombre en
@@ -310,7 +352,7 @@ margen(dB) = Prx − sensibilidad_Rx</div>
         <tr><td>A partir de la altura de la torre de cada antena</td><td><span class="ok-pill">✓ cumple</span></td><td>Campos "Altura de torre (m)" para sitio A y B.</td></tr>
         <tr><td>Ubicación geográfica (lat/long) de los dos puntos</td><td><span class="ok-pill">✓ cumple</span></td><td>Campos de latitud/longitud, además de marcadores arrastrables y "fijar en el mapa".</td></tr>
         <tr><td>Frecuencia específica</td><td><span class="ok-pill">✓ cumple</span></td><td>Campo de frecuencia con selector de unidad (Hz–GHz).</td></tr>
-        <tr><td>Uso de fuente cartográfica de la red</td><td><span class="ok-pill">✓ cumple</span></td><td>Mapa con OpenStreetMap (Leaflet) + elevación real vía Open-Elevation.</td></tr>
+        <tr><td>Uso de fuente cartográfica de la red</td><td><span class="ok-pill">✓ cumple</span></td><td>Mapa con Esri/OpenStreetMap (Leaflet) + elevación real vía Open-Meteo (Copernicus DEM).</td></tr>
         <tr><td>Calidad de la interfaz de usuario</td><td><span class="ok-pill">✓ cumple</span></td><td>Sistema de diseño propio (tipografía, color, iconos), modo oscuro, portada, mapa interactivo.</td></tr>
         <tr><td>Presentación del resultado</td><td><span class="ok-pill">✓ cumple</span></td><td>Veredicto con semáforo de color, 12 tarjetas de lectura, perfil gráfico del enlace, informe imprimible.</td></tr>
         <tr><td>Trabajo en equipo (hasta 3 estudiantes)</td><td><span class="ok-pill">✓ apoyo</span></td><td>Escenarios guardados para que cada integrante pruebe y compare su configuración.</td></tr>
@@ -327,9 +369,9 @@ margen(dB) = Prx − sensibilidad_Rx</div>
         <li>La verificación con k crítico (sección 7.6) evalúa un único k de subrefracción de referencia (0.667);
         un análisis de disponibilidad estadística real (P.530) usaría distribuciones de k propias del clima de la
         zona, que no calculamos aquí.</li>
-        <li>El terreno real depende de una API pública gratuita de terceros (Open-Elevation), que puede ser lenta o
+        <li>El terreno real depende de una API pública gratuita de terceros (Open-Meteo Elevation), que puede ser lenta o
         no estar disponible en todo momento; por diseño, la app nunca se bloquea por eso.</li>
-        <li>El mapa (OpenStreetMap) y las tipografías (Google Fonts) requieren conexión a internet para verse; sin
+        <li>El mapa (Esri/OpenStreetMap) y las tipografías (Google Fonts) requieren conexión a internet para verse; sin
         red, la app sigue calculando y mostrando el perfil, solo sin el mapa de fondo.</li>
         <li>El terreno intermedio, cuando no se usa "terreno real", se asume plano al nivel de las bases de las
         torres — el obstáculo puntual es una forma manual de aproximar un cerro o edificio conocido.</li>
